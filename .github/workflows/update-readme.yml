@@ -1,0 +1,70 @@
+name: Update Recent Work
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # daily at 06:00 UTC — adjust as you like
+  workflow_dispatch: {}   # lets you trigger it manually from the Actions tab
+  push:
+    branches: [main]      # also refresh whenever you push to this repo itself
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout profile repo
+        uses: actions/checkout@v4
+
+      - name: Update README with recent repo activity
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const username = context.repo.owner;
+            const MAX_REPOS = 5;
+            const START = "<!-- RECENT_WORK:START -->";
+            const END = "<!-- RECENT_WORK:END -->";
+
+            // Pull all public, non-fork repos, most recently pushed first.
+            const repos = await github.paginate(github.rest.repos.listForUser, {
+              username,
+              type: "owner",
+              sort: "pushed",
+              direction: "desc",
+              per_page: 100,
+            });
+
+            const filtered = repos
+              .filter(r => !r.fork && !r.archived && r.name.toLowerCase() !== username.toLowerCase())
+              .slice(0, MAX_REPOS);
+
+            const lines = filtered.map(r => {
+              const desc = r.description ? r.description.trim() : "No description yet.";
+              return `- **[${r.name}](${r.html_url})** — ${desc}`;
+            });
+
+            const block = `${START}\n${lines.join("\n")}\n${END}`;
+
+            const readmePath = "README.md";
+            let content = fs.readFileSync(readmePath, "utf8");
+
+            if (content.includes(START) && content.includes(END)) {
+              const pattern = new RegExp(`${START}[\\s\\S]*?${END}`);
+              content = content.replace(pattern, block);
+            } else {
+              // First run: markers don't exist yet, so append a section for them.
+              content += `\n\n## Recent work\n\n${block}\n`;
+            }
+
+            fs.writeFileSync(readmePath, content);
+
+      - name: Commit changes if anything actually changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git diff --cached --quiet || git commit -m "Auto-update Recent work section"
+          git push
