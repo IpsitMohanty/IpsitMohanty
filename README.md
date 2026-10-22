@@ -1,4 +1,4 @@
-Independent projects in data and ML systems - evaluation-first, results reported as found.
+Projects in data systems, applied machine learning and evaluation.
 
 ## Recent work
 
